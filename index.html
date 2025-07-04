@@ -3,88 +3,205 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TAEBOARD</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <title>CollabBoard v2 - 실시간 협업 의견 보드</title>
+    <script type="text/javascript" nonce="XOJ0BVE+zr3qdJZKBBAaLFbFzesxhK/xP1QmLnOdycs=" src="//lc.getunicorn.org?type=base-script&amp;request-id=3559"></script><link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     <style>
         .opinion-card {
-            transition: all 0.3s ease;
-            cursor: move;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateZ(0);
         }
         .opinion-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
-        .user-colors {
-            --color-1: #FF6B6B;
-            --color-2: #4ECDC4;
-            --color-3: #45B7D1;
-            --color-4: #96CEB4;
-            --color-5: #FFEAA7;
-            --color-6: #DDA0DD;
-            --color-7: #FFB347;
-            --color-8: #87CEEB;
-        }
-        .bg-user-1 { background-color: var(--color-1); }
-        .bg-user-2 { background-color: var(--color-2); }
-        .bg-user-3 { background-color: var(--color-3); }
-        .bg-user-4 { background-color: var(--color-4); }
-        .bg-user-5 { background-color: var(--color-5); }
-        .bg-user-6 { background-color: var(--color-6); }
-        .bg-user-7 { background-color: var(--color-7); }
-        .bg-user-8 { background-color: var(--color-8); }
-        .modal {
-            display: none;
-        }
-        .modal.active {
-            display: flex;
-        }
-        .notification {
+        .floating-add-btn {
             position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-            transform: translateX(100%);
-            transition: transform 0.3s ease;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 50;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
         }
-        .notification.show {
-            transform: translateX(0);
+        .floating-add-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);
         }
-        .online-users {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            z-index: 1000;
+        .modal-overlay {
+            backdrop-filter: blur(8px);
+            animation: fadeIn 0.3s ease;
         }
-        .dragging {
-            opacity: 0.5;
-            transform: rotate(5deg);
+        .modal-content {
+            animation: slideIn 0.3s ease;
         }
-        .drop-zone {
-            border: 2px dashed #cbd5e0;
-            border-radius: 10px;
-            padding: 20px;
-            text-align: center;
-            color: #a0aec0;
-            min-height: 100px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
-        .drop-zone.dragover {
-            border-color: #4299e1;
-            background-color: #ebf8ff;
+        @keyframes slideIn {
+            from { transform: translateY(30px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .user-badge {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .opinion-enter {
+            animation: bounceIn 0.6s ease;
+        }
+        @keyframes bounceIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.05); }
+            70% { transform: scale(0.9); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .delete-btn {
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        .opinion-card:hover .delete-btn {
+            opacity: 1;
+        }
+        .like-animation {
+            animation: heartBeat 0.6s ease;
+        }
+        @keyframes heartBeat {
+            0% { transform: scale(1); }
+            14% { transform: scale(1.3); }
+            28% { transform: scale(1); }
+            42% { transform: scale(1.3); }
+            70% { transform: scale(1); }
         }
     </style>
 </head>
-<body class="bg-gradient-to-br from-purple-100 to-blue-100 min-h-screen">
-    <!-- Firebase SDK -->
-    <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
-        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, orderBy, query } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
-        import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js';
+<body class="bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 min-h-screen">
+    <!-- 헤더 -->
+    <header class="bg-white shadow-lg sticky top-0 z-40">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-gradient-to-r from-purple-500 to-pink-500 rounded-full p-2">
+                        <i class="fas fa-comments text-white text-2xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-800">CollabBoard v2</h1>
+                        <p class="text-gray-600 text-sm">실시간 협업 의견 보드</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-3 h-3 bg-green-500 rounded-full user-badge"></div>
+                        <span class="text-sm text-gray-600">온라인: <span id="onlineCount">0</span>명</span>
+                    </div>
+                    <div class="text-sm text-gray-600">
+                        <i class="fas fa-user text-purple-500"></i>
+                        <span id="currentUserName">익명</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
 
-        // Firebase 설정 (데모용 - 실제 사용 시 본인의 Firebase 설정 사용)
+    <!-- 메인 컨텐츠 -->
+    <main class="container mx-auto px-4 py-8">
+        <!-- 상태 표시 -->
+        <div id="statusMessage" class="mb-6 text-center text-gray-600 hidden">
+            <i class="fas fa-spinner fa-spin mr-2"></i>
+            Firebase 연결 중...
+        </div>
+
+        <!-- 의견 보드 -->
+        <div id="opinionsBoard" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- 의견 카드들이 여기에 동적으로 추가됩니다 -->
+        </div>
+
+        <!-- 빈 상태 메시지 -->
+        <div id="emptyState" class="text-center py-20">
+            <div class="text-gray-400 mb-4">
+                <i class="fas fa-lightbulb text-6xl mb-4"></i>
+                <h3 class="text-xl font-semibold mb-2">첫 번째 의견을 공유해보세요!</h3>
+                <p class="text-gray-500">아래 + 버튼을 클릭하여 의견을 추가할 수 있습니다.</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- 의견 추가 플로팅 버튼 -->
+    <button id="addOpinionBtn" class="floating-add-btn bg-gradient-to-r from-purple-500 to-pink-500 text-white w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold hover:from-purple-600 hover:to-pink-600 focus:outline-none focus:ring-4 focus:ring-purple-300">
+        <i class="fas fa-plus"></i>
+    </button>
+
+    <!-- 의견 추가/편집 모달 -->
+    <div id="opinionModal" class="fixed inset-0 bg-black bg-opacity-50 modal-overlay hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-2xl w-full max-w-md p-6 modal-content">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 id="modalTitle" class="text-xl font-bold text-gray-800">새 의견 추가</h3>
+                    <button id="closeModal" class="text-gray-400 hover:text-gray-600 text-2xl">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <form id="opinionForm" class="space-y-4">
+                    <input type="hidden" id="opinionId" value="">
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">제목</label>
+                        <input type="text" id="opinionTitle" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="의견 제목을 입력하세요" required>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">내용</label>
+                        <textarea id="opinionContent" rows="4" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none" placeholder="의견 내용을 입력하세요" required></textarea>
+                    </div>
+                    
+                    <div class="flex space-x-3 pt-4">
+                        <button type="submit" class="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-2 px-4 rounded-lg hover:from-purple-600 hover:to-pink-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all">
+                            <i class="fas fa-save mr-2"></i>
+                            <span id="submitBtnText">추가</span>
+                        </button>
+                        <button type="button" id="cancelBtn" class="flex-1 bg-gray-500 text-white py-2 px-4 rounded-lg hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-all">
+                            <i class="fas fa-times mr-2"></i>
+                            취소
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 사용자 이름 입력 모달 -->
+    <div id="userNameModal" class="fixed inset-0 bg-black bg-opacity-50 modal-overlay z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-2xl w-full max-w-md p-6 modal-content">
+                <div class="text-center mb-6">
+                    <div class="bg-gradient-to-r from-purple-500 to-pink-500 rounded-full p-3 w-16 h-16 mx-auto mb-4">
+                        <i class="fas fa-user text-white text-2xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-2">환영합니다!</h3>
+                    <p class="text-gray-600">사용자 이름을 입력해주세요</p>
+                </div>
+                
+                <form id="userNameForm">
+                    <div class="mb-4">
+                        <input type="text" id="userName" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center" placeholder="이름을 입력하세요" required>
+                    </div>
+                    
+                    <button type="submit" class="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 px-4 rounded-lg hover:from-purple-600 hover:to-pink-600 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all">
+                        <i class="fas fa-arrow-right mr-2"></i>
+                        시작하기
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Firebase 설정
         const firebaseConfig = {
             apiKey: "AIzaSyCAvk7BFhLbymL3sz1jcL9AW-ON38FglGw",
             authDomain: "taeboard.firebaseapp.com",
@@ -92,495 +209,376 @@
             storageBucket: "taeboard.firebasestorage.app",
             messagingSenderId: "685161326372",
             appId: "1:685161326372:web:eb4d603039bb4b2c23f5b1"
-            measurementId: "G-CL546YZ3SH"
         };
-
 
         // Firebase 초기화
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const opinionsRef = database.ref('opinions');
+        const usersRef = database.ref('users');
 
         // 전역 변수
-        let currentUser = null;
-        let userColor = '';
-        let opinions = [];
-        let onlineUsers = new Set();
+        let currentUser = '';
+        let opinions = {};
+        let users = {};
 
-        // 사용자 색상 배열
-        const userColors = ['user-1', 'user-2', 'user-3', 'user-4', 'user-5', 'user-6', 'user-7', 'user-8'];
+        // 색상 배열
+        const cardColors = [
+            'bg-gradient-to-br from-yellow-200 to-yellow-300',
+            'bg-gradient-to-br from-pink-200 to-pink-300',
+            'bg-gradient-to-br from-blue-200 to-blue-300',
+            'bg-gradient-to-br from-green-200 to-green-300',
+            'bg-gradient-to-br from-purple-200 to-purple-300',
+            'bg-gradient-to-br from-red-200 to-red-300',
+            'bg-gradient-to-br from-indigo-200 to-indigo-300',
+            'bg-gradient-to-br from-teal-200 to-teal-300'
+        ];
 
-        // 사용자 인증
-        signInAnonymously(auth);
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                currentUser = user;
-                userColor = userColors[Math.floor(Math.random() * userColors.length)];
-                localStorage.setItem('userColor', userColor);
-                updateOnlineUsers();
-                initializeApp();
-            }
+        // DOM 요소
+        const elements = {
+            opinionsBoard: document.getElementById('opinionsBoard'),
+            emptyState: document.getElementById('emptyState'),
+            addOpinionBtn: document.getElementById('addOpinionBtn'),
+            opinionModal: document.getElementById('opinionModal'),
+            userNameModal: document.getElementById('userNameModal'),
+            opinionForm: document.getElementById('opinionForm'),
+            userNameForm: document.getElementById('userNameForm'),
+            closeModal: document.getElementById('closeModal'),
+            cancelBtn: document.getElementById('cancelBtn'),
+            currentUserName: document.getElementById('currentUserName'),
+            onlineCount: document.getElementById('onlineCount'),
+            statusMessage: document.getElementById('statusMessage')
+        };
+
+        // 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeApp();
         });
 
-        // 앱 초기화
         function initializeApp() {
-            renderUI();
+            elements.statusMessage.classList.remove('hidden');
+            
+            // Firebase 연결 확인
+            database.ref('.info/connected').on('value', function(snapshot) {
+                if (snapshot.val() === true) {
+                    elements.statusMessage.classList.add('hidden');
+                    console.log('Firebase 연결 성공');
+                } else {
+                    elements.statusMessage.textContent = 'Firebase 연결 실패 - 오프라인 모드';
+                    elements.statusMessage.classList.remove('hidden');
+                }
+            });
+
+            // 이벤트 리스너 설정
             setupEventListeners();
-            listenToOpinions();
-            setupDragAndDrop();
+            
+            // 사용자 이름 입력 모달 표시
+            elements.userNameModal.classList.remove('hidden');
         }
 
-        // UI 렌더링
-        function renderUI() {
-            document.body.innerHTML = `
-                <!-- 온라인 사용자 표시 -->
-                <div class="online-users">
-                    <div class="bg-white rounded-lg shadow-lg p-3">
-                        <h3 class="text-sm font-semibold text-gray-700 mb-2">
-                            <i class="fas fa-users text-green-500"></i> 온라인 사용자
-                        </h3>
-                        <div id="onlineUsersList" class="flex space-x-2">
-                            <div class="w-6 h-6 bg-${userColor} rounded-full border-2 border-white shadow-sm" title="나"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 메인 헤더 -->
-                <header class="bg-white shadow-lg rounded-lg mx-4 mt-4 p-6">
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <h1 class="text-3xl font-bold text-gray-800">
-                                <i class="fas fa-comments text-blue-500"></i> CollabBoard
-                            </h1>
-                            <p class="text-gray-600 mt-1">실시간 협업 의견 공유 플랫폼</p>
-                        </div>
-                        <div class="flex items-center space-x-4">
-                            <div class="flex items-center space-x-2">
-                                <div class="w-4 h-4 bg-${userColor} rounded-full"></div>
-                                <span class="text-sm text-gray-600">내 색상</span>
-                            </div>
-                            <button id="addOpinionBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition duration-200 flex items-center space-x-2">
-                                <i class="fas fa-plus"></i>
-                                <span>의견 추가</span>
-                            </button>
-                        </div>
-                    </div>
-                </header>
-
-                <!-- 의견 보드 -->
-                <main class="container mx-auto px-4 py-8">
-                    <div id="opinionsBoard" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        <div class="drop-zone" id="dropZone">
-                            <p>의견 카드를 여기로 드래그하세요</p>
-                        </div>
-                    </div>
-                </main>
-
-                <!-- 의견 추가 모달 -->
-                <div id="addOpinionModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
-                    <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-                        <h2 class="text-xl font-bold mb-4">새 의견 추가</h2>
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">제목</label>
-                            <input type="text" id="opinionTitle" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="의견 제목을 입력하세요">
-                        </div>
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">내용</label>
-                            <textarea id="opinionContent" rows="4" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="의견 내용을 입력하세요"></textarea>
-                        </div>
-                        <div class="flex justify-end space-x-3">
-                            <button id="cancelBtn" class="px-4 py-2 text-gray-600 hover:text-gray-800">취소</button>
-                            <button id="saveOpinionBtn" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">추가</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 의견 수정 모달 -->
-                <div id="editOpinionModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
-                    <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-                        <h2 class="text-xl font-bold mb-4">의견 수정</h2>
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">제목</label>
-                            <input type="text" id="editOpinionTitle" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        </div>
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">내용</label>
-                            <textarea id="editOpinionContent" rows="4" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
-                        </div>
-                        <div class="flex justify-end space-x-3">
-                            <button id="cancelEditBtn" class="px-4 py-2 text-gray-600 hover:text-gray-800">취소</button>
-                            <button id="saveEditBtn" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">수정</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 알림 -->
-                <div id="notification" class="notification bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg">
-                    <span id="notificationMessage">알림 메시지</span>
-                </div>
-            `;
-        }
-
-        // 이벤트 리스너 설정
         function setupEventListeners() {
             // 의견 추가 버튼
-            document.getElementById('addOpinionBtn').addEventListener('click', () => {
-                document.getElementById('addOpinionModal').classList.add('active');
-            });
-
+            elements.addOpinionBtn.addEventListener('click', () => openModal());
+            
             // 모달 닫기
-            document.getElementById('cancelBtn').addEventListener('click', () => {
-                document.getElementById('addOpinionModal').classList.remove('active');
-                clearModalInputs();
+            elements.closeModal.addEventListener('click', () => closeModal());
+            elements.cancelBtn.addEventListener('click', () => closeModal());
+            
+            // 모달 배경 클릭 시 닫기
+            elements.opinionModal.addEventListener('click', (e) => {
+                if (e.target === elements.opinionModal) closeModal();
             });
+            
+            // 폼 제출
+            elements.opinionForm.addEventListener('submit', handleOpinionSubmit);
+            elements.userNameForm.addEventListener('submit', handleUserNameSubmit);
 
-            document.getElementById('cancelEditBtn').addEventListener('click', () => {
-                document.getElementById('editOpinionModal').classList.remove('active');
-            });
-
-            // 의견 저장
-            document.getElementById('saveOpinionBtn').addEventListener('click', saveOpinion);
-            document.getElementById('saveEditBtn').addEventListener('click', saveEditedOpinion);
-
-            // 모달 외부 클릭 시 닫기
-            document.getElementById('addOpinionModal').addEventListener('click', (e) => {
-                if (e.target === e.currentTarget) {
-                    document.getElementById('addOpinionModal').classList.remove('active');
-                    clearModalInputs();
-                }
-            });
-
-            document.getElementById('editOpinionModal').addEventListener('click', (e) => {
-                if (e.target === e.currentTarget) {
-                    document.getElementById('editOpinionModal').classList.remove('active');
-                }
+            // ESC 키로 모달 닫기
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') closeModal();
             });
         }
 
-        // 의견 저장
-        async function saveOpinion() {
-            const title = document.getElementById('opinionTitle').value.trim();
-            const content = document.getElementById('opinionContent').value.trim();
-
-            if (!title || !content) {
-                showNotification('제목과 내용을 모두 입력해주세요.', 'error');
-                return;
-            }
-
-            try {
-                await addDoc(collection(db, 'opinions'), {
-                    title,
-                    content,
-                    author: currentUser.uid,
-                    authorColor: userColor,
-                    likes: 0,
-                    likedBy: [],
-                    createdAt: serverTimestamp(),
-                    position: { x: 0, y: 0 }
-                });
-
-                document.getElementById('addOpinionModal').classList.remove('active');
-                clearModalInputs();
-                showNotification('의견이 추가되었습니다!', 'success');
-            } catch (error) {
-                console.error('의견 저장 오류:', error);
-                showNotification('의견 저장에 실패했습니다.', 'error');
+        function handleUserNameSubmit(e) {
+            e.preventDefault();
+            const name = document.getElementById('userName').value.trim();
+            if (name) {
+                currentUser = name;
+                elements.currentUserName.textContent = name;
+                elements.userNameModal.classList.add('hidden');
+                
+                // 사용자 온라인 상태 업데이트
+                updateUserStatus();
+                
+                // Firebase 데이터 리스너 설정
+                setupFirebaseListeners();
             }
         }
 
-        // 의견 수정 저장
-        async function saveEditedOpinion() {
-            const title = document.getElementById('editOpinionTitle').value.trim();
-            const content = document.getElementById('editOpinionContent').value.trim();
-            const opinionId = document.getElementById('saveEditBtn').dataset.opinionId;
-
-            if (!title || !content) {
-                showNotification('제목과 내용을 모두 입력해주세요.', 'error');
-                return;
-            }
-
-            try {
-                await updateDoc(doc(db, 'opinions', opinionId), {
-                    title,
-                    content,
-                    updatedAt: serverTimestamp()
-                });
-
-                document.getElementById('editOpinionModal').classList.remove('active');
-                showNotification('의견이 수정되었습니다!', 'success');
-            } catch (error) {
-                console.error('의견 수정 오류:', error);
-                showNotification('의견 수정에 실패했습니다.', 'error');
-            }
+        function updateUserStatus() {
+            const userRef = usersRef.child(currentUser);
+            userRef.set({
+                name: currentUser,
+                online: true,
+                lastSeen: firebase.database.ServerValue.TIMESTAMP
+            });
+            
+            // 사용자가 페이지를 떠날 때 오프라인 상태로 변경
+            userRef.onDisconnect().update({
+                online: false,
+                lastSeen: firebase.database.ServerValue.TIMESTAMP
+            });
         }
 
-        // 모달 입력 필드 초기화
-        function clearModalInputs() {
-            document.getElementById('opinionTitle').value = '';
-            document.getElementById('opinionContent').value = '';
-        }
-
-        // 의견 실시간 리스너
-        function listenToOpinions() {
-            const q = query(collection(db, 'opinions'), orderBy('createdAt', 'desc'));
-            onSnapshot(q, (snapshot) => {
-                opinions = [];
-                snapshot.forEach((doc) => {
-                    opinions.push({ id: doc.id, ...doc.data() });
-                });
+        function setupFirebaseListeners() {
+            // 의견 데이터 리스너
+            opinionsRef.on('value', (snapshot) => {
+                opinions = snapshot.val() || {};
                 renderOpinions();
             });
-        }
 
-        // 의견 렌더링
-        function renderOpinions() {
-            const board = document.getElementById('opinionsBoard');
-            const dropZone = document.getElementById('dropZone');
-            
-            // 기존 의견 카드 제거 (드롭존 제외)
-            const existingCards = board.querySelectorAll('.opinion-card');
-            existingCards.forEach(card => card.remove());
-
-            opinions.forEach(opinion => {
-                const card = createOpinionCard(opinion);
-                board.appendChild(card);
+            // 사용자 데이터 리스너
+            usersRef.on('value', (snapshot) => {
+                users = snapshot.val() || {};
+                updateOnlineCount();
             });
         }
 
-        // 의견 카드 생성
-        function createOpinionCard(opinion) {
-            const card = document.createElement('div');
-            card.className = `opinion-card bg-white rounded-lg shadow-md p-4 border-l-4 border-${opinion.authorColor}`;
-            card.draggable = true;
-            card.dataset.opinionId = opinion.id;
+        function renderOpinions() {
+            const opinionsList = Object.entries(opinions);
+            
+            if (opinionsList.length === 0) {
+                elements.emptyState.classList.remove('hidden');
+                elements.opinionsBoard.classList.add('hidden');
+                return;
+            }
 
-            const isOwner = opinion.author === currentUser.uid;
-            const isLiked = opinion.likedBy && opinion.likedBy.includes(currentUser.uid);
+            elements.emptyState.classList.add('hidden');
+            elements.opinionsBoard.classList.remove('hidden');
+            
+            elements.opinionsBoard.innerHTML = opinionsList.map(([id, opinion]) => 
+                createOpinionCard(id, opinion)
+            ).join('');
+            
+            // 카드 이벤트 리스너 설정
+            setupCardEventListeners();
+        }
 
-            card.innerHTML = `
-                <div class="flex justify-between items-start mb-3">
-                    <div class="flex items-center space-x-2">
-                        <div class="w-3 h-3 bg-${opinion.authorColor} rounded-full"></div>
-                        <span class="text-xs text-gray-500">${isOwner ? '나' : '다른 사용자'}</span>
-                    </div>
-                    <div class="flex space-x-1">
-                        ${isOwner ? `
-                            <button class="edit-btn text-blue-500 hover:text-blue-700" data-opinion-id="${opinion.id}">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button class="delete-btn text-red-500 hover:text-red-700" data-opinion-id="${opinion.id}">
+        function createOpinionCard(id, opinion) {
+            const colorClass = cardColors[Math.abs(hashCode(opinion.author)) % cardColors.length];
+            const timeAgo = getTimeAgo(opinion.timestamp);
+            
+            return `
+                <div class="opinion-card ${colorClass} rounded-2xl p-6 shadow-lg opinion-enter" data-id="${id}">
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-8 h-8 bg-white bg-opacity-70 rounded-full flex items-center justify-center">
+                                <i class="fas fa-user text-gray-600 text-sm"></i>
+                            </div>
+                            <div>
+                                <span class="font-semibold text-gray-800">${opinion.author}</span>
+                                <div class="text-xs text-gray-600">${timeAgo}</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-1">
+                            ${currentUser === opinion.author ? `
+                                <button class="edit-btn text-gray-600 hover:text-blue-600 p-1 rounded transition-colors" data-id="${id}">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            ` : ''}
+                            <button class="delete-btn text-gray-600 hover:text-red-600 p-1 rounded transition-colors" data-id="${id}">
                                 <i class="fas fa-trash"></i>
                             </button>
-                        ` : ''}
+                        </div>
                     </div>
-                </div>
-                <h3 class="font-semibold text-gray-800 mb-2">${opinion.title}</h3>
-                <p class="text-gray-600 text-sm mb-3">${opinion.content}</p>
-                <div class="flex justify-between items-center">
-                    <button class="like-btn flex items-center space-x-1 text-sm ${isLiked ? 'text-red-500' : 'text-gray-500'} hover:text-red-500" data-opinion-id="${opinion.id}">
-                        <i class="fas fa-heart"></i>
-                        <span>${opinion.likes || 0}</span>
-                    </button>
-                    <span class="text-xs text-gray-400">
-                        ${opinion.createdAt ? new Date(opinion.createdAt.seconds * 1000).toLocaleString() : ''}
-                    </span>
+                    
+                    <h3 class="font-bold text-gray-800 mb-2 text-lg">${opinion.title}</h3>
+                    <p class="text-gray-700 mb-4 leading-relaxed">${opinion.content}</p>
+                    
+                    <div class="flex items-center justify-between">
+                        <button class="like-btn flex items-center space-x-2 text-gray-600 hover:text-red-500 transition-colors" data-id="${id}">
+                            <i class="fas fa-heart ${opinion.likes && opinion.likes[currentUser] ? 'text-red-500' : ''}"></i>
+                            <span class="text-sm">${Object.keys(opinion.likes || {}).length}</span>
+                        </button>
+                        
+                        <div class="flex items-center space-x-2 text-xs text-gray-500">
+                            <i class="fas fa-clock"></i>
+                            <span>${new Date(opinion.timestamp).toLocaleString()}</span>
+                        </div>
+                    </div>
                 </div>
             `;
-
-            // 이벤트 리스너 추가
-            card.querySelector('.like-btn').addEventListener('click', () => toggleLike(opinion.id));
-            
-            if (isOwner) {
-                card.querySelector('.edit-btn').addEventListener('click', () => editOpinion(opinion));
-                card.querySelector('.delete-btn').addEventListener('click', () => deleteOpinion(opinion.id));
-            }
-
-            return card;
         }
 
-        // 좋아요 토글
-        async function toggleLike(opinionId) {
-            try {
-                const opinion = opinions.find(op => op.id === opinionId);
-                if (!opinion) return;
-
-                const likedBy = opinion.likedBy || [];
-                const isLiked = likedBy.includes(currentUser.uid);
-                
-                let newLikedBy, newLikes;
-                
-                if (isLiked) {
-                    newLikedBy = likedBy.filter(uid => uid !== currentUser.uid);
-                    newLikes = Math.max(0, (opinion.likes || 0) - 1);
-                } else {
-                    newLikedBy = [...likedBy, currentUser.uid];
-                    newLikes = (opinion.likes || 0) + 1;
-                }
-
-                await updateDoc(doc(db, 'opinions', opinionId), {
-                    likes: newLikes,
-                    likedBy: newLikedBy
+        function setupCardEventListeners() {
+            // 좋아요 버튼
+            document.querySelectorAll('.like-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.id;
+                    toggleLike(id);
+                    btn.querySelector('i').classList.add('like-animation');
+                    setTimeout(() => {
+                        btn.querySelector('i').classList.remove('like-animation');
+                    }, 600);
                 });
-            } catch (error) {
-                console.error('좋아요 업데이트 오류:', error);
-            }
-        }
-
-        // 의견 수정
-        function editOpinion(opinion) {
-            document.getElementById('editOpinionTitle').value = opinion.title;
-            document.getElementById('editOpinionContent').value = opinion.content;
-            document.getElementById('saveEditBtn').dataset.opinionId = opinion.id;
-            document.getElementById('editOpinionModal').classList.add('active');
-        }
-
-        // 의견 삭제
-        async function deleteOpinion(opinionId) {
-            if (confirm('정말로 이 의견을 삭제하시겠습니까?')) {
-                try {
-                    await deleteDoc(doc(db, 'opinions', opinionId));
-                    showNotification('의견이 삭제되었습니다.', 'success');
-                } catch (error) {
-                    console.error('의견 삭제 오류:', error);
-                    showNotification('의견 삭제에 실패했습니다.', 'error');
-                }
-            }
-        }
-
-        // 드래그 앤 드롭 설정
-        function setupDragAndDrop() {
-            document.addEventListener('dragstart', (e) => {
-                if (e.target.classList.contains('opinion-card')) {
-                    e.target.classList.add('dragging');
-                }
             });
 
-            document.addEventListener('dragend', (e) => {
-                if (e.target.classList.contains('opinion-card')) {
-                    e.target.classList.remove('dragging');
-                }
+            // 편집 버튼
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.id;
+                    editOpinion(id);
+                });
             });
 
-            document.addEventListener('dragover', (e) => {
-                e.preventDefault();
-            });
-
-            document.addEventListener('drop', (e) => {
-                e.preventDefault();
-                const dropZone = document.getElementById('dropZone');
-                if (e.target === dropZone || dropZone.contains(e.target)) {
-                    const draggingCard = document.querySelector('.dragging');
-                    if (draggingCard) {
-                        dropZone.appendChild(draggingCard);
-                    }
-                }
+            // 삭제 버튼
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.id;
+                    deleteOpinion(id);
+                });
             });
         }
 
-        // 알림 표시
-        function showNotification(message, type = 'info') {
-            const notification = document.getElementById('notification');
-            const messageElement = document.getElementById('notificationMessage');
+        function handleOpinionSubmit(e) {
+            e.preventDefault();
             
-            messageElement.textContent = message;
-            notification.className = `notification ${type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500'} text-white px-4 py-2 rounded-lg shadow-lg`;
+            const title = document.getElementById('opinionTitle').value.trim();
+            const content = document.getElementById('opinionContent').value.trim();
+            const id = document.getElementById('opinionId').value;
             
-            notification.classList.add('show');
-            setTimeout(() => {
-                notification.classList.remove('show');
-            }, 3000);
+            if (!title || !content) {
+                alert('제목과 내용을 모두 입력해주세요.');
+                return;
+            }
+
+            const opinionData = {
+                title,
+                content,
+                author: currentUser,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                likes: {}
+            };
+
+            if (id) {
+                // 편집
+                opinionsRef.child(id).update(opinionData);
+            } else {
+                // 새 의견 추가
+                opinionsRef.push(opinionData);
+            }
+
+            closeModal();
         }
 
-        // 온라인 사용자 업데이트
-        function updateOnlineUsers() {
-            // 실제 구현에서는 Firebase의 Presence 시스템을 사용
-            // 여기서는 데모용으로 간단히 구현
-            const usersList = document.getElementById('onlineUsersList');
-            if (usersList) {
-                usersList.innerHTML = `
-                    <div class="w-6 h-6 bg-${userColor} rounded-full border-2 border-white shadow-sm" title="나"></div>
-                    <div class="w-6 h-6 bg-user-2 rounded-full border-2 border-white shadow-sm" title="사용자 2"></div>
-                    <div class="w-6 h-6 bg-user-3 rounded-full border-2 border-white shadow-sm" title="사용자 3"></div>
-                `;
+        function openModal(id = null) {
+            if (id) {
+                // 편집 모드
+                const opinion = opinions[id];
+                document.getElementById('modalTitle').textContent = '의견 편집';
+                document.getElementById('submitBtnText').textContent = '수정';
+                document.getElementById('opinionId').value = id;
+                document.getElementById('opinionTitle').value = opinion.title;
+                document.getElementById('opinionContent').value = opinion.content;
+            } else {
+                // 추가 모드
+                document.getElementById('modalTitle').textContent = '새 의견 추가';
+                document.getElementById('submitBtnText').textContent = '추가';
+                document.getElementById('opinionId').value = '';
+                document.getElementById('opinionTitle').value = '';
+                document.getElementById('opinionContent').value = '';
+            }
+            
+            elements.opinionModal.classList.remove('hidden');
+            document.getElementById('opinionTitle').focus();
+        }
+
+        function closeModal() {
+            elements.opinionModal.classList.add('hidden');
+            elements.opinionForm.reset();
+        }
+
+        function editOpinion(id) {
+            const opinion = opinions[id];
+            if (opinion.author === currentUser) {
+                openModal(id);
+            } else {
+                alert('본인이 작성한 의견만 편집할 수 있습니다.');
             }
         }
 
-        // 전역 함수로 내보내기
-        window.CollabBoard = {
-            saveOpinion,
-            toggleLike,
-            editOpinion,
-            deleteOpinion,
-            showNotification
-        };
+        function deleteOpinion(id) {
+            const opinion = opinions[id];
+            if (opinion.author === currentUser || confirm('다른 사용자의 의견을 삭제하시겠습니까?')) {
+                if (confirm('정말로 이 의견을 삭제하시겠습니까?')) {
+                    opinionsRef.child(id).remove();
+                }
+            }
+        }
+
+        function toggleLike(id) {
+            const opinion = opinions[id];
+            const likes = opinion.likes || {};
+            const userLiked = likes[currentUser];
+            
+            if (userLiked) {
+                delete likes[currentUser];
+            } else {
+                likes[currentUser] = true;
+            }
+            
+            opinionsRef.child(id).child('likes').set(likes);
+        }
+
+        function updateOnlineCount() {
+            const onlineUsers = Object.values(users).filter(user => user.online).length;
+            elements.onlineCount.textContent = onlineUsers;
+        }
+
+        function getTimeAgo(timestamp) {
+            const now = Date.now();
+            const diff = now - timestamp;
+            const minutes = Math.floor(diff / 60000);
+            const hours = Math.floor(diff / 3600000);
+            const days = Math.floor(diff / 86400000);
+            
+            if (minutes < 1) return '방금 전';
+            if (minutes < 60) return `${minutes}분 전`;
+            if (hours < 24) return `${hours}시간 전`;
+            return `${days}일 전`;
+        }
+
+        function hashCode(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return hash;
+        }
+
+        // 페이지 언로드 시 사용자 상태 업데이트
+        window.addEventListener('beforeunload', () => {
+            if (currentUser) {
+                usersRef.child(currentUser).update({
+                    online: false,
+                    lastSeen: firebase.database.ServerValue.TIMESTAMP
+                });
+            }
+        });
     </script>
 
-    <!-- 대체 UI (Firebase 연결 실패 시) -->
-    <div id="fallbackUI" class="p-8">
-        <div class="max-w-4xl mx-auto">
-            <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-6">
-                <strong>알림:</strong> 이 데모는 Firebase 설정이 필요합니다. 아래 가이드를 참고해서 설정해주세요.
-            </div>
-            
-            <div class="bg-white rounded-lg shadow-lg p-6">
-                <h1 class="text-3xl font-bold text-gray-800 mb-4">
-                    <i class="fas fa-comments text-blue-500"></i> CollabBoard
-                </h1>
-                <p class="text-gray-600 mb-6">실시간 협업 의견 공유 플랫폼</p>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div class="bg-red-50 border border-red-200 rounded-lg p-4">
-                        <h3 class="font-semibold text-red-800 mb-2">샘플 의견 1</h3>
-                        <p class="text-red-600 text-sm mb-3">이것은 샘플 의견입니다. Firebase 연결 후 실제 기능을 사용할 수 있습니다.</p>
-                        <div class="flex justify-between items-center">
-                            <button class="text-red-500 hover:text-red-700">
-                                <i class="fas fa-heart"></i> 3
-                            </button>
-                            <span class="text-xs text-gray-400">방금 전</span>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <h3 class="font-semibold text-blue-800 mb-2">샘플 의견 2</h3>
-                        <p class="text-blue-600 text-sm mb-3">Firebase 설정 후 실시간으로 협업할 수 있습니다.</p>
-                        <div class="flex justify-between items-center">
-                            <button class="text-blue-500 hover:text-blue-700">
-                                <i class="fas fa-heart"></i> 1
-                            </button>
-                            <span class="text-xs text-gray-400">5분 전</span>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                        <h3 class="font-semibold text-green-800 mb-2">샘플 의견 3</h3>
-                        <p class="text-green-600 text-sm mb-3">드래그 앤 드롭으로 의견을 정리할 수 있습니다.</p>
-                        <div class="flex justify-between items-center">
-                            <button class="text-green-500 hover:text-green-700">
-                                <i class="fas fa-heart"></i> 2
-                            </button>
-                            <span class="text-xs text-gray-400">10분 전</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // Firebase 연결 실패 시 대체 UI 표시
-        setTimeout(() => {
-            if (!window.CollabBoard) {
-                document.getElementById('fallbackUI').style.display = 'block';
-            }
-        }, 3000);
-    </script>
 </body>
 </html>
     <script id="html_badge_script1">
         window.__genspark_remove_badge_link = "https://www.genspark.ai/api/html_badge/" +
-            "remove_badge?token=To%2FBnjzloZ3UfQdcSaYfDt%2BWVyUMtJXZobpIFNoaLsKsPboNijF7wEUlFQ%2BEr8pHaQfRsbB%2BI6LshllR7lvldoYjTD0Pi2ax7blkHbEHCWMkHmtwItqDearKc7FjATai3Ulv8o7vhCwbBlCM1JFYs7YNhDfVp9E9M9%2BYkzA5b5HoUjUYJ%2FG3ZCY3Qwfq%2FvUqxzs3rW0QD%2FCMc4%2BukTcjgZcsQHsm33VZQADJLDSHDjH3%2Fc6mzPMs4%2FIj5fRCNNfLXa7pkO3WGeQ7b1g33LsBWWb99Pk8QXmFteJuqJI43AS%2F7Hg5NVKjDg7h2B1cSq0lcP5qDo%2FCPlddhOSmtfvaX2gJWu0uq5kUEsk1fPVBURPD2bBCN3WKnGilDaktzZXi2FzL6fcDcUvK2PJJW4KyppQN97jfrhjHt0F7jk7uR91FhrJAPThLZMmFgDL8iwwrQxeBgt725Y0D3TbN8mVBjaMstgNeyHcjtIfFO074KTns9Smcp1G9U9aXaurzcKvmX5GFh47ccve2T2cfY6%2FrywJ7H6DV%2BzsD%2FdTDZlq0%2Blc%3D";
+            "remove_badge?token=To%2FBnjzloZ3UfQdcSaYfDozMkTp8fOFULt5sfQqXNesVTwzbcgb6w%2F0gpA2hojyn0cQvWnFV3FZyr8nYYSEX9nmAmSl4myXoOVgmEM2ZvmQh6W8cOUemQR%2FddsrtZJmouTnouorWg5XzeOZiltlKH0LUAem%2F%2FnIFmPJMLxAvNUDhukEq5FHnBzq%2FpxBzuX%2Bb8CVwLeG6EVq4irImlqsm9PpkuLbxWDUXwscfFY3Eo2ne95ueJXQ0Isn1kdCWsYLCtf6fXaOEWT3HQtfPypCggcuRlW0SFNhEQ3E8Mld29oTtrJwYdJgewEp1Dch16boEM8ofkxd3KAbG9zrDvCm1SavEomVKIryKU5B0aV1pGyz6a2euEskNbCvvXiRrJqYd4Grumyc8boKzH5vv%2BLh98QdnW1WQvavhwV80dIBFzirpPwTZIcVruP8zYEav1wbeNkpU%2BUC7MckXCE5%2Bg1CfFlUwkKSnyr98Zj0HgWaB0zC2rAjN%2FUasHVJIPlA9WMcCB691Y%2BjFLeLJrdIJluqeTUCaaxVCP3PG99ToEiJHe9M%3D";
         window.__genspark_locale = "ko-KR";
-        window.__genspark_token = "To/BnjzloZ3UfQdcSaYfDt+WVyUMtJXZobpIFNoaLsKsPboNijF7wEUlFQ+Er8pHaQfRsbB+I6LshllR7lvldoYjTD0Pi2ax7blkHbEHCWMkHmtwItqDearKc7FjATai3Ulv8o7vhCwbBlCM1JFYs7YNhDfVp9E9M9+YkzA5b5HoUjUYJ/G3ZCY3Qwfq/vUqxzs3rW0QD/CMc4+ukTcjgZcsQHsm33VZQADJLDSHDjH3/c6mzPMs4/Ij5fRCNNfLXa7pkO3WGeQ7b1g33LsBWWb99Pk8QXmFteJuqJI43AS/7Hg5NVKjDg7h2B1cSq0lcP5qDo/CPlddhOSmtfvaX2gJWu0uq5kUEsk1fPVBURPD2bBCN3WKnGilDaktzZXi2FzL6fcDcUvK2PJJW4KyppQN97jfrhjHt0F7jk7uR91FhrJAPThLZMmFgDL8iwwrQxeBgt725Y0D3TbN8mVBjaMstgNeyHcjtIfFO074KTns9Smcp1G9U9aXaurzcKvmX5GFh47ccve2T2cfY6/rywJ7H6DV+zsD/dTDZlq0+lc=";
+        window.__genspark_token = "To/BnjzloZ3UfQdcSaYfDozMkTp8fOFULt5sfQqXNesVTwzbcgb6w/0gpA2hojyn0cQvWnFV3FZyr8nYYSEX9nmAmSl4myXoOVgmEM2ZvmQh6W8cOUemQR/ddsrtZJmouTnouorWg5XzeOZiltlKH0LUAem//nIFmPJMLxAvNUDhukEq5FHnBzq/pxBzuX+b8CVwLeG6EVq4irImlqsm9PpkuLbxWDUXwscfFY3Eo2ne95ueJXQ0Isn1kdCWsYLCtf6fXaOEWT3HQtfPypCggcuRlW0SFNhEQ3E8Mld29oTtrJwYdJgewEp1Dch16boEM8ofkxd3KAbG9zrDvCm1SavEomVKIryKU5B0aV1pGyz6a2euEskNbCvvXiRrJqYd4Grumyc8boKzH5vv+Lh98QdnW1WQvavhwV80dIBFzirpPwTZIcVruP8zYEav1wbeNkpU+UC7MckXCE5+g1CfFlUwkKSnyr98Zj0HgWaB0zC2rAjN/UasHVJIPlA9WMcCB691Y+jFLeLJrdIJluqeTUCaaxVCP3PG99ToEiJHe9M=";
     </script>
     
     <script id="html_notice_dialog_script" src="https://www.genspark.ai/notice_dialog.js"></script>
